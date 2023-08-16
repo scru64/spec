@@ -28,7 +28,13 @@ unique time-ordered identifiers, consider [SCRU128].
 
 [SCRU128]: https://github.com/scru128/spec
 
-## Specification (work in progress)
+## Implementations
+
+- [JavaScript](https://github.com/scru64/javascript)
+- [Python](https://github.com/scru64/python)
+- [Rust](https://github.com/scru64/rust)
+
+## Specification v0.1.0
 
 A SCRU64 ID is a non-negative integer less than `36^12` (approx. `2^62`)
 consisting of three terms:
@@ -39,33 +45,38 @@ timestamp * 2^24 + node_id * 2^(24 - node_id_size) + counter
 
 Where:
 
-- `timestamp` is a non-negative integer less than `36^12 / 2^24` representing a
-  256-millisecond-precision Unix timestamp (i.e., the number of 256 milliseconds
-  elapsed since 1970-01-01 00:00:00+00:00, ignoring leap seconds; or a Unix
-  timestamp in milliseconds divided by 256).
+- `timestamp` is a non-negative integer less than `36^12 / 2^24` (from zero to
+  `282429536480`) representing a 256-millisecond-precision Unix timestamp (i.e.,
+  the number of 256 milliseconds elapsed since 1970-01-01 00:00:00+00:00,
+  ignoring leap seconds; or a Unix timestamp in milliseconds divided by 256).
 - `node_id` is a `node_id_size`-bit unsigned integer uniquely assigned to each
-  SCRU64 generator in the relevant scope, where `node_id_size` is an integer
+  SCRU64 generator in a relevant scope, where `node_id_size` is an integer
   between 1 and 23, inclusive.
   - The method to assign unique `node_id`s is implementation-dependent and is
     out of the scope of this specification.
-  - `node_id_size` may be chosen arbitrarily.
+  - `node_id_size` may be chosen arbitrarily and may vary from node to node as
+    long as the leading bits of a longer `node_id` do not colide with shorter
+    `node_id`s.
 - `counter` is a `24 - node_id_size`-bit unsigned integer incremented by one
   whenever a generator produces a new ID. `counter` is reset to an arbitrary-bit
   random number when `timestamp` moves forward.
-  - `counter` should generally be reset to a `24 - node_id_size`-bit random
-    number but may be reset to a smaller-bit random number to ensure a `counter`
-    can accommodate a certain number of IDs within a `timestamp` tick.
+  - `counter` should generally be reset to a random number in full but may be
+    reset to a _smaller-bit_ (e.g., 15-bit for a 16-bit `counter`) random number
+    to reserve some leading bits as the overflow guard that guarantees the space
+    for a certain number of IDs within a `timestamp` tick.
 
 This definition is equivalent to the following binary bit-shift operations:
 
 ```
 timestamp = unix_timestamp_in_milliseconds >> 8
-output = (timestamp << 24) | (node_id << (24 - node_id_size)) | counter
+scru64_int = (timestamp << 24) | (node_id << (24 - node_id_size)) | counter
 ```
 
 ### Binary representation
 
-A SCRU64 ID is usually represented as a 64-bit signed or unsigned integer.
+A SCRU64 ID is usually represented as a 64-bit unsigned integer but may be
+expressed as a signed integer, a byte array, or any other form as long as it
+encodes integers from zero to the maximum value (`36^12 - 1`).
 
 ### Textual representation
 
@@ -88,6 +99,82 @@ denotable in a 12-digit Base36 string (i.e., `zzzzzzzzzzzz`).
 For the sake of uniformity, an encoder should use lowercase letters in encoding
 IDs. A decoder, on the other hand, must always ignore cases when interpreting or
 lexicographically sorting encoded IDs.
+
+The Base36 encoding shown above is available by default in several languages
+(e.g., `strconv.FormatUint()` and `strconv.ParseUint()` in Go). Another simple
+way to implement it is by using 64-bit integer division and modulo operations.
+The following C code illustrates the straightforward algorithm:
+
+```c
+uint64_t num = UINT64_C(109959589539758421);
+
+static const char digits[] = "0123456789abcdefghijklmnopqrstuvwxyz";
+char text[13];
+for (int i = 11; i >= 0; i--) {
+  text[i] = digits[num % 36];
+  num /= 36;
+}
+text[12] = '\0';
+puts(text); // 0u2pf62ji4b9
+```
+
+### Special-purpose IDs
+
+The IDs with `timestamp` set at zero or `36^12 / 2^24 - 1` are reserved for
+special purposes (e.g., use as dummy, error, or example values) and must not be
+used or assigned as an identifier of anything.
+
+### Considerations
+
+#### Quality of random numbers
+
+The random numbers used need not be of cryptographic quality because small
+random numbers are insecure anyway. This specification introduces randomness not
+as a source of uniqueness or unguessability but primarily as a thin protection
+against unintended duplication of `node_id`s by accidents and mistakes.
+
+#### Counter overflow handling
+
+Counter overflow occurs when the `counter` field does not provide sufficient
+space for the IDs generated within a `timestamp` tick. The `counter` of SCRU64
+IDs frequently overflows when the workload is high because the scheme is not
+able to spare sufficient bit space for counters; therefore, generators must
+implement reasonable logic to handle such overflows. The recommended approach is
+to increment `timestamp` and continue in the following way:
+
+1.  Increment `timestamp` by one.
+2.  Reset `counter` to a random number.
+
+This approach is recommended over other options such as the "sleep till next
+tick" approach because this technique allows the generation of monotonically
+ordered IDs in a non-blocking manner. Raising an error on a counter overflow is
+generally not recommended because a counter overflow is not a fault of users of
+SCRU64.
+
+This approach results in a greater `timestamp` value than the real-time clock.
+Such a gap between `timestamp` and the wall clock should be handled as a small
+clock rollback discussed below.
+
+#### Clock rollback handling
+
+A SCRU64 generator relies on a real-time clock to ensure the monotonic order of
+generated IDs; therefore, it cannot guarantee monotonicity when the clock moves
+back. When a generator detects a clock rollback by comparing the up-to-date
+timestamp from the system clock and the one embedded in the last generated ID,
+the recommended treatment is:
+
+1.  If the rollback is small enough (e.g., a few seconds), treat the `timestamp`
+    of the last generated ID as the up-to-date one, betting that the wall clock
+    will catch up soon.
+2.  Otherwise, stall the generator and wait for the next `timestamp` tick, reset
+    the generator with another unique `node_id`, or abort and raise an error.
+
+This approach ensures a prompt response when a clock rollback is small, but if
+the clock rollback is significant or if the demand for IDs is so high that the
+counter overflow handling discussed above results in a `timestamp` significantly
+advanced from the current wall clock timestamp, the generator behavior might be
+implementation-dependent. Resetting `timestamp` without refreshing `node_id` is
+highly discouraged because it results in a very high risk of duplicates.
 
 ### License
 
