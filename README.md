@@ -30,9 +30,11 @@ unique time-ordered identifiers, consider [SCRU128].
 
 ## Implementations
 
+- [Go](https://github.com/scru64/go-scru64)
 - [JavaScript](https://github.com/scru64/javascript)
 - [Python](https://github.com/scru64/python)
 - [Rust](https://github.com/scru64/rust)
+- [Swift](https://github.com/scru64/swift-scru64)
 
 ## Specification v0.1.1
 
