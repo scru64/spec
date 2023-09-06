@@ -36,7 +36,7 @@ unique time-ordered identifiers, consider [SCRU128].
 - [Rust](https://github.com/scru64/rust)
 - [Swift](https://github.com/scru64/swift-scru64)
 
-## Specification v0.1.1
+## Specification v0.1.2
 
 A SCRU64 ID is a non-negative integer less than `36^12` (approx. `2^62`)
 consisting of three terms:
@@ -64,7 +64,7 @@ Where:
   random number when `timestamp` moves forward.
   - `counter` should generally be reset to a random number in full but may be
     reset to a _smaller-bit_ (e.g., 15-bit for a 16-bit `counter`) random number
-    to reserve some leading bits as the overflow guard that guarantees the space
+    to reserve some leading bits as an overflow guard that guarantees the room
     for a certain number of IDs within a `timestamp` tick.
 
 This definition is equivalent to the following binary bit-shift operations:
@@ -194,10 +194,10 @@ SCRU64_NODE_SPEC=42/8 npx scru64 -n 4
 ```
 
 A node spec string starts with a decimal `node_id`, a hexadecimal `node_id`
-prefixed with `"0x"`, or a 12-digit `node_prev` SCRU64 ID value, followed by a
-slash and a decimal `node_id_size` value ranging from 1 to 23 (e.g., `"42/8"`,
-`"0xb00/12"`, `"0u2r85hm2pt3/16"`). The first and second forms create a fresh
-new generator with the given `node_id`, while the third form constructs one that
+prefixed by "0x", or a 12-digit `node_prev` SCRU64 ID value, followed by a slash
+and a decimal `node_id_size` value ranging from 1 to 23 (e.g., "42/8",
+"0xb00/12", "0u2r85hm2pt3/16"). The first and second forms create a fresh new
+generator with the given `node_id`, while the third form constructs one that
 generates subsequent SCRU64 IDs to the `node_prev`.
 
 The global generator raises an error if a proper node spec is not passed,
