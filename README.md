@@ -36,7 +36,7 @@ unique time-ordered identifiers, consider [SCRU128].
 - [Rust](https://github.com/scru64/rust)
 - [Swift](https://github.com/scru64/swift-scru64)
 
-## Specification v0.1.2
+## Specification v0.1.3
 
 A SCRU64 ID is a non-negative integer less than `36^12` (approx. `2^62`)
 consisting of three terms:
@@ -134,6 +134,20 @@ The random numbers used need not be of cryptographic quality because small
 random numbers are insecure anyway. This specification introduces randomness not
 as a source of uniqueness or unguessability but primarily as a thin protection
 against unintended duplication of `node_id`s by accidents and mistakes.
+
+#### Identification of node by `node_id`
+
+Implementations should not extract the `node_id` from a SCRU64 ID to identify
+the node that generated the ID because:
+
+- `node_id` is not necessarily a persistent ID for a single node and may change
+  over time.
+- `node_id_size` may also change over time to adjust the trade-off between the
+  number of nodes in an application and the number of IDs per node.
+
+`node_id` is embedded in an ID solely for the purpose of uniqueness guarantee
+across distributed nodes, and thus the use of `node_id` for any other reason may
+harm the extensibility of the variable `node_id_size` design.
 
 #### Counter overflow handling
 
