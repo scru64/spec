@@ -36,7 +36,7 @@ comparison table for the properties of the two schemes.
 | Timestamp range             | January 1, 1970 - February 27, 4261 (UTC)                      | January 1, 1970 - August 2, 10889 (UTC)                   |
 | Timestamp resolution        | 256 milliseconds                                               | 1 millisecond                                             |
 | Number of IDs per timestamp | Up to 8.4 million per 256 milliseconds per node (configurable) | 140.7 trillion per millisecond per node (on average)      |
-| Number of distributed nodes | Up to 8.4 million (configurable)                               | No specific constraint                                    |
+| Number of distributed nodes | Up to 8.4 million (configurable)                               | No specific limitation                                    |
 | Source of uniqueness        | Centrally pre-assigned node ID                                 | Independently generated random numbers                    |
 | Choose it when you ...      | Prefer 64-bit integer for storage, indexing, and other reasons | Want unique IDs without hassle to coordinate generators   |
 
@@ -50,12 +50,12 @@ comparison table for the properties of the two schemes.
 - [Rust](https://github.com/scru64/rust)
 - [Swift](https://github.com/scru64/swift-scru64)
 
-## Specification v0.1.3
+## Specification v0.1.4
 
 A SCRU64 ID is a non-negative integer less than `36^12` (approx. `2^62`)
 consisting of three terms:
 
-```
+```r
 timestamp * 2^24 + node_id * 2^(24 - node_id_size) + counter
 ```
 
@@ -71,21 +71,31 @@ Where:
   - The method to assign unique `node_id`s is implementation-dependent and is
     out of the scope of this specification.
   - `node_id_size` may be chosen arbitrarily and may vary from node to node as
-    long as the leading bits of a longer `node_id` do not colide with shorter
+    long as the leading bits of a longer `node_id` do not collide with shorter
     `node_id`s.
 - `counter` is a `24 - node_id_size`-bit unsigned integer incremented by one
-  whenever a generator produces a new ID. `counter` is reset to an arbitrary-bit
-  random number when `timestamp` moves forward.
-  - `counter` should generally be reset to a random number in full but may be
-    reset to a _smaller-bit_ (e.g., 15-bit for a 16-bit `counter`) random number
-    to reserve some leading bits as an overflow guard that guarantees the room
-    for a certain number of IDs within a `timestamp` tick.
+  whenever a generator produces a new ID. `counter` is reset to a random number
+  when `timestamp` moves forward.
+  - `counter` should be reset to a random number of the full `counter` size but
+    may be reset to a _smaller-bit_ (e.g., 15-bit for a 16-bit `counter`) random
+    number to reserve the leading bits as an overflow guard to guarantee the
+    room for a certain number of IDs within a `timestamp` tick.
 
-This definition is equivalent to the following binary bit-shift operations:
+This definition is equivalent to the following bitwise operations using 64-bit
+integers:
 
+```python
+timestamp << 24 | node_id << (24 - node_id_size) | counter
 ```
+
+For the following value ranges:
+
+```python
 timestamp = unix_timestamp_in_milliseconds >> 8
-scru64_int = (timestamp << 24) | (node_id << (24 - node_id_size)) | counter
+0 <= timestamp    <= 282429536480
+1 <= node_id_size <= 23
+0 <= node_id      <  1 << node_id_size
+0 <= counter      <  1 << (24 - node_id_size)
 ```
 
 ### Binary representation
@@ -149,15 +159,15 @@ random numbers are insecure anyway. This specification introduces randomness not
 as a source of uniqueness or unguessability but primarily as a thin protection
 against unintended duplication of `node_id`s by accidents and mistakes.
 
-#### Identification of node by `node_id`
+#### Identifying node by `node_id`
 
 Implementations should not extract the `node_id` from a SCRU64 ID to identify
-the node that generated the ID because:
+the generator because:
 
-- `node_id` is not necessarily a persistent ID for a single node and may change
+- `node_id` is not necessarily a persistent ID of a single node and may change
   over time.
 - `node_id_size` may also change over time to adjust the trade-off between the
-  number of nodes in an application and the number of IDs per node.
+  number of distributed nodes and the number of IDs per node.
 
 `node_id` is embedded in an ID solely for the purpose of uniqueness guarantee
 across distributed nodes, and thus the use of `node_id` for any other reason may
@@ -167,8 +177,8 @@ harm the extensibility of the variable `node_id_size` design.
 
 Counter overflow occurs when the `counter` field does not provide sufficient
 space for the IDs generated within a `timestamp` tick. The `counter` of SCRU64
-IDs frequently overflows when the workload is high because the scheme is not
-able to spare sufficient bit space for counters; therefore, generators must
+IDs tends to overflow when the workload is high because the scheme is only able
+to spare a limited number of bits for `counter`. Therefore, generators must
 implement reasonable logic to handle such overflows. The recommended approach is
 to increment `timestamp` and continue in the following way:
 
@@ -199,23 +209,25 @@ the recommended treatment is:
 2.  Otherwise, stall the generator and wait for the next `timestamp` tick, reset
     the generator with another unique `node_id`, or abort and raise an error.
 
-This approach ensures a prompt response when a clock rollback is small, but if
-the clock rollback is significant or if the demand for IDs is so high that the
-counter overflow handling discussed above results in a `timestamp` significantly
-advanced from the current wall clock timestamp, the generator behavior might be
-implementation-dependent. Resetting `timestamp` without refreshing `node_id` is
-highly discouraged because it results in a very high risk of duplicates.
+This approach ensures a prompt response when a clock rollback is small, while
+the generator behavior will be implementation-dependent if the clock rollback is
+significant, or if the demand for IDs is so high that the counter overflow
+handling discussed above results in a `timestamp` significantly advanced from
+the current timestamp.
+
+Resetting `timestamp` without refreshing `node_id` is highly discouraged because
+it results in a very high risk of duplicate IDs.
 
 ### Informative usage notes
 
 #### Node spec API
 
-The reference implementations are equipped with a default global generator that
-reads the `node_id` and `node_id_size` configuration from an environment
-variable. Pass a unique node configuration encoded in a node specifier string
-through the `SCRU64_NODE_SPEC` environment variable to invoke a process, and the
-invoked application will have access to the global SCRU64 generator configured
-with the given node information. For example:
+The reference implementations include a default global generator that reads the
+`node_id` and `node_id_size` configuration from an environment variable. Pass a
+unique node configuration encoded in a node specifier string through the
+`SCRU64_NODE_SPEC` environment variable to invoke a process, and the invoked
+application will have access to the global SCRU64 generator configured with the
+given node information. For example:
 
 ```bash
 SCRU64_NODE_SPEC=42/8 npx scru64 -n 4
@@ -241,7 +253,7 @@ many independent nodes that generate a few IDs per `timestamp`, a large
 `node_id_size` will fit. If an application deploys a few nodes that generate
 many IDs, then a small `node_id_size` should be used.
 
-With the variable-size design, an application may operate short `node_id`s and
+With the variable-size design, an application can operate short `node_id`s and
 long `node_id`s together if the leading bits of longer `node_id`s are carefully
 assigned not to collide with short `node_id`s. This approach is useful to mix
 _hot_ nodes that generate many and _cold_ nodes that do not. For example:
