@@ -50,7 +50,7 @@ comparison table for the properties of the two schemes.
 - [Rust](https://github.com/scru64/rust)
 - [Swift](https://github.com/scru64/swift-scru64)
 
-## Specification v0.1.4
+## Specification v1.0.0
 
 A SCRU64 ID is a non-negative integer less than `36^12` (approx. `2^62`)
 consisting of three terms:
@@ -259,11 +259,11 @@ assigned not to collide with short `node_id`s. This approach is useful to mix
 _hot_ nodes that generate many and _cold_ nodes that do not. For example:
 
 ```bash
-# Hot nodes take 0b0000, 0b0001, ...
+# Hot nodes take 0b0000, 0b0001, ..., 0b0111
 SCRU64_NODE_SPEC=0x0/4 launch_hot_node
 SCRU64_NODE_SPEC=0x1/4 launch_hot_node
 
-# Cold nodes use 0b1000_xxxx
+# Cold nodes use 0b1000_0000, 0b1000_0001, ..., 0b1111_1111
 SCRU64_NODE_SPEC=0x80/8 launch_cold_node
 SCRU64_NODE_SPEC=0x81/8 launch_cold_node
 SCRU64_NODE_SPEC=0x82/8 launch_cold_node
